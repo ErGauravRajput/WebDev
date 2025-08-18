@@ -3,7 +3,7 @@ import dotenv from "dotenv";//-r dotenv/config --experimental-json-modules only 
 import connectDB from "./db/db.js";
 import { app } from "./app.js";
 dotenv.config({
-    path:'./env'
+    path:'./.env'
 })
 connectDB()
 .then(()=>{
