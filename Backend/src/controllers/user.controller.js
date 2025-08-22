@@ -4,6 +4,7 @@ import {User} from "../models/user.model.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshTokens=async(userid)=>{
     const user=await User.findById(userid);
@@ -79,8 +80,9 @@ const loginUser=asyncHandler(async(req,res)=>{
             $or: [{email},{username}]
         }
     );
+    if(!password) throw new ApiError(400,"Password is required");
     if(!user) throw new ApiError(404,"User does not exist");
-    const isPasswordValid=user.isPasswordCorrect(password);
+    const isPasswordValid=await user.isPasswordCorrect(password);
     if(!isPasswordValid) throw new ApiError(401,"Invalid User Credentials");
 
     const {accessToken,refreshToken}=await  generateAccessAndRefreshTokens(user._id);
@@ -152,7 +154,8 @@ const refreshAccessToken=asyncHandler(async(req,res)=>{
             httpOnly:true,
             secure:true
         }
-        const {newRefreshToken,accessToken}=await generateAccessAndRefreshTokens(user._id);
+        const {refreshToken:newRefreshToken,accessToken}=await generateAccessAndRefreshTokens(user._id);
+        // console.log("rf:" ,newRefreshToken," ac:",accessToken)
     
         return res
         .status(200)
@@ -220,6 +223,7 @@ const updateAccountDetails=asyncHandler(async(req,res)=>{
 
 const updateUserAvatar=asyncHandler(async(req,res)=>{
     const avatarLocalPath=req.file?.path;
+    // console.log(req.file);
     if(!avatarLocalPath) throw new ApiError(400,"Avatar file is missing");
     const avatar=await uploadOnCloudinary(avatarLocalPath);
     
@@ -241,6 +245,7 @@ const updateUserAvatar=asyncHandler(async(req,res)=>{
 
 const updateUserCoverImage=asyncHandler(async(req,res)=>{
     const coverImageLocalPath=req.file?.path;
+    // console.log(req.file);
     if(!coverImageLocalPath) throw new ApiError(400,"Cover Image file is missing");
     const coverImage=await uploadOnCloudinary(coverImageLocalPath);
     
@@ -329,6 +334,58 @@ const getUserChannelProfile=asyncHandler(async(req,res)=>{
     )
 });
 
+const getWatchHistory=asyncHandler(async(req,res)=>{
+    const user=await User.aggregate([
+        {
+            $match:{
+                _id:new mongoose.Types.ObjectId(req.user._id)
+            }
+        },
+        {
+            $lookup:{
+                from:"videos",
+                localField:"watchHistory",
+                foreignField:"_id",
+                as:"WatchHistory",
+                pipeline:[
+                    {
+                        $lookup:{
+                            from:"users",
+                            localField:"owner",
+                            foreignField:"_id",
+                            as:"owner",
+                            pipeline:[
+                                {
+                                    $project:{
+                                        fullname:1,
+                                        username:1,
+                                        avatar:1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields:{
+                            owner:{
+                                $first:"$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200,
+            user[0].getWatchHistory,"Watch History fetched successfully"
+        )
+    )
+});
+
 export {
     registerUser,
     loginUser,
@@ -339,5 +396,6 @@ export {
     updateAccountDetails,
     updateUserAvatar,
     updateUserCoverImage,
-    getUserChannelProfile
+    getUserChannelProfile,
+    getWatchHistory
 };
